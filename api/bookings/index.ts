@@ -51,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function handleGetBookings(req: VercelRequest, res: VercelResponse) {
+async function handleGetBookings(_req: VercelRequest, res: VercelResponse) {
   try {
     const { rows } = await pool.query(`
         SELECT

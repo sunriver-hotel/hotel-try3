@@ -162,8 +162,8 @@ const DashboardPage: React.FC = () => {
                                 fill="#8884d8"
                                 dataKey="value"
                                 nameKey="name"
-                                // Fix: Handle cases where 'percent' might be undefined by providing a fallback.
-                                label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                                // Fix: Explicitly convert `percent` to a number to prevent type errors during arithmetic operations.
+                                label={({ name, percent }) => `${name} ${((Number(percent) || 0) * 100).toFixed(0)}%`}
                             >
                                 {popularRoomsData.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
