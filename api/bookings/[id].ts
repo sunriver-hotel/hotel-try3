@@ -1,12 +1,13 @@
 // api/bookings/[id].ts
 import { sql } from '@vercel/postgres';
-import { NextApiRequest, NextApiResponse } from 'next';
+// FIX: Use NextApiHandler to ensure proper typing of the request object.
+import { NextApiHandler } from 'next';
 import { formatDateForDB, formatDateFromDB, mapPaymentStatusToDB, mapPaymentStatusFromDB } from '../utils/db-helpers';
 
-export default async function handler(
-  request: NextApiRequest,
-  response: NextApiResponse,
-) {
+const handler: NextApiHandler = async (
+  request,
+  response,
+) => {
   if (request.method !== 'PUT') {
     return response.status(405).json({ message: 'Method Not Allowed' });
   }
@@ -119,4 +120,6 @@ export default async function handler(
     console.error('API Update Booking Error:', error);
     return response.status(500).json({ message: 'Internal Server Error' });
   }
-}
+};
+
+export default handler;

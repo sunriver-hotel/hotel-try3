@@ -1,11 +1,13 @@
 // api/auth/login.ts
 import { sql } from '@vercel/postgres';
-import { NextApiRequest, NextApiResponse } from 'next';
+// FIX: Use NextApiHandler to ensure proper typing of the request object.
+import { NextApiHandler } from 'next';
+import bcrypt from 'bcrypt';
 
-export default async function handler(
-  request: NextApiRequest,
-  response: NextApiResponse,
-) {
+const handler: NextApiHandler = async (
+  request,
+  response,
+) => {
   if (request.method !== 'POST') {
     return response.status(405).json({ message: 'Method Not Allowed' });
   }
@@ -23,16 +25,24 @@ export default async function handler(
     
     const user = rows[0];
 
-    if (user && user.password_hash === password) {
-      // In a real application, use a library like bcrypt to compare hashed passwords.
-      // For this project, we are comparing plain text as per the schema.
-      return response.status(200).json({ message: 'Login successful' });
-    } else {
-      return response.status(401).json({ message: 'Invalid credentials' });
+    // Check if user exists first
+    if (user) {
+      // Use bcrypt.compare to securely compare the provided password with the stored hash
+      const passwordMatch = await bcrypt.compare(password, user.password_hash);
+
+      if (passwordMatch) {
+        // Passwords match, login successful
+        return response.status(200).json({ message: 'Login successful' });
+      }
     }
+    
+    // If user is not found or password does not match, return invalid credentials
+    return response.status(401).json({ message: 'Invalid credentials' });
 
   } catch (error) {
     console.error('API Login Error:', error);
     return response.status(500).json({ message: 'Internal Server Error' });
   }
-}
+};
+
+export default handler;

@@ -1,6 +1,7 @@
 // api/bookings/index.ts
 import { sql } from '@vercel/postgres';
-import { NextApiRequest, NextApiResponse } from 'next';
+// FIX: Use NextApiHandler to ensure proper typing of the request object.
+import { NextApiRequest, NextApiResponse, NextApiHandler } from 'next';
 import { formatDateForDB, formatDateFromDB, mapPaymentStatusToDB, mapPaymentStatusFromDB } from '../utils/db-helpers';
 
 // Helper function to query and format a single logical booking
@@ -40,10 +41,11 @@ const getFormattedBooking = async (customerId: number, checkIn: string, checkOut
 }
 
 // Main handler for GET (all) and POST (create)
-export default async function handler(
-  request: NextApiRequest,
-  response: NextApiResponse,
-) {
+// FIX: Using NextApiHandler to ensure correct types for request and response.
+const handler: NextApiHandler = async (
+    request,
+    response,
+) => {
   switch (request.method) {
     case 'GET':
       return handleGetBookings(request, response);
@@ -53,6 +55,8 @@ export default async function handler(
       return response.status(405).json({ message: 'Method Not Allowed' });
   }
 }
+
+export default handler;
 
 // --- GET All Bookings ---
 async function handleGetBookings(req: NextApiRequest, res: NextApiResponse) {

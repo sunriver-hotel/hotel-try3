@@ -1,12 +1,13 @@
 // api/cleaning-status/index.ts
 import { sql } from '@vercel/postgres';
-import { NextApiResponse, NextApiRequest } from 'next';
+// FIX: Use NextApiHandler to ensure proper typing of the request object.
+import { NextApiHandler } from 'next';
 import { mapCleaningStatusFromDB } from '../utils/db-helpers';
 
-export default async function handler(
-  request: NextApiRequest,
-  response: NextApiResponse,
-) {
+const handler: NextApiHandler = async (
+  request,
+  response,
+) => {
   if (request.method !== 'GET') {
     return response.status(405).json({ message: 'Method Not Allowed' });
   }
@@ -28,4 +29,6 @@ export default async function handler(
     console.error('API Get Cleaning Status Error:', error);
     return response.status(500).json({ message: 'Internal Server Error' });
   }
-}
+};
+
+export default handler;
