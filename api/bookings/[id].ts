@@ -45,8 +45,8 @@ const handler: NextApiHandler = async (
           AND b.check_in_date = ${check_in_date}
           AND b.check_out_date = ${check_out_date};
     `;
-    const originalRoomNumbers = originalRoomsResult.rows.map(r => r.room_number);
-    const newRoomNumbers = updatedBookingData.roomIds;
+    const originalRoomNumbers: string[] = originalRoomsResult.rows.map(r => r.room_number);
+    const newRoomNumbers: string[] = updatedBookingData.roomIds;
 
     const roomsToDelete = originalRoomNumbers.filter(r => !newRoomNumbers.includes(r));
     const roomsToAdd = newRoomNumbers.filter(r => !originalRoomNumbers.includes(r));
@@ -57,12 +57,15 @@ const handler: NextApiHandler = async (
 
     // 4. Delete removed rooms from the booking
     if (roomsToDelete.length > 0) {
+        // FIX: The `sql` template from `@vercel/postgres` does not support array parameters for `ANY`.
+        // The array must be converted to a PostgreSQL array literal string, e.g., '{101,102}'.
+        const roomsToDeletePGArray = `{${roomsToDelete.join(',')}}`;
         await sql`
             DELETE FROM bookings
             WHERE customer_id = ${customer_id}
               AND check_in_date = ${check_in_date}
               AND check_out_date = ${check_out_date}
-              AND room_id IN (SELECT room_id FROM rooms WHERE room_number = ANY(${roomsToDelete}));
+              AND room_id IN (SELECT room_id FROM rooms WHERE room_number = ANY(${roomsToDeletePGArray}));
         `;
     }
 
@@ -81,6 +84,9 @@ const handler: NextApiHandler = async (
     }
 
     // 6. Update the remaining/common booking records
+    // FIX: The `sql` template from `@vercel/postgres` does not support array parameters for `ANY`.
+    // The array must be converted to a PostgreSQL array literal string, e.g., '{101,102}'.
+    const newRoomNumbersPGArray = `{${newRoomNumbers.join(',')}}`;
     await sql`
         UPDATE bookings
         SET check_in_date = ${checkInDB},
@@ -91,7 +97,7 @@ const handler: NextApiHandler = async (
         WHERE customer_id = ${customer_id}
           AND check_in_date = ${check_in_date}
           AND check_out_date = ${check_out_date}
-          AND room_id IN (SELECT room_id FROM rooms WHERE room_number = ANY(${newRoomNumbers}));
+          AND room_id IN (SELECT room_id FROM rooms WHERE room_number = ANY(${newRoomNumbersPGArray}));
     `;
     
     // Fetch and return the fully updated logical booking object

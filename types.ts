@@ -45,7 +45,7 @@ export interface AppContextType {
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
   isAuthenticated: boolean;
-  login: (user: string, pass: string) => Promise<boolean>;
+  login: (user: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   activePage: string;
   setActivePage: (page: string) => void;

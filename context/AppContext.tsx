@@ -61,21 +61,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return translations[key]?.[language] || key;
   };
 
-  const login = async (user: string, pass: string): Promise<boolean> => {
+  const login = async (user: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     try {
-        const response = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: user, password: pass })
-        });
-        if (response.ok) {
-            setIsAuthenticated(true);
-            return true;
-        }
-        return false;
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass }),
+      });
+
+      if (response.ok) {
+        setIsAuthenticated(true);
+        return { success: true };
+      }
+      
+      // If response is not OK, parse the error message from the API
+      const errorData = await response.json();
+      return { success: false, error: errorData.message || 'An unknown error occurred.' };
+
     } catch (error) {
-        console.error("Login API error:", error);
-        return false;
+      console.error('Login API error:', error);
+      // Handle network errors or other fetch-related issues
+      return { success: false, error: 'Failed to connect to the server. Please check your connection.' };
     }
   };
 

@@ -1,3 +1,4 @@
+
 // api/auth/login.ts
 import { sql } from '@vercel/postgres';
 // FIX: Use NextApiHandler to ensure proper typing of the request object.
@@ -39,9 +40,13 @@ const handler: NextApiHandler = async (
     // If user is not found or password does not match, return invalid credentials
     return response.status(401).json({ message: 'Invalid credentials' });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('API Login Error:', error);
-    return response.status(500).json({ message: 'Internal Server Error' });
+    // Provide a more detailed error message for debugging database connection issues
+    return response.status(500).json({ 
+        message: 'Database connection error. Please check your DATABASE_URL environment variable in Vercel.',
+        error: error.message // Also send the raw error message
+    });
   }
 };
 

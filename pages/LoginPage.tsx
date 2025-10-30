@@ -18,10 +18,14 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setIsLoggingIn(true);
     setError('');
-    const success = await login(username, password);
-    if (!success) {
-      setError(t('invalid_credentials'));
+    
+    const result = await login(username, password);
+    
+    if (!result.success) {
+      // Display the specific error message from the API, or a default one.
+      setError(result.error || t('invalid_credentials'));
     }
+    
     setIsLoggingIn(false);
   };
 
