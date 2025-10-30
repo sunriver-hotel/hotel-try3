@@ -1,18 +1,14 @@
 // api/rooms/index.ts
-import { sql } from '@vercel/postgres';
-// FIX: Use NextApiHandler to ensure proper typing of the request object.
-import { NextApiHandler } from 'next';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { pool } from '../utils/db';
 
-const handler: NextApiHandler = async (
-  request,
-  response,
-) => {
-  if (request.method !== 'GET') {
-    return response.status(405).json({ message: 'Method Not Allowed' });
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
   try {
-    const { rows } = await sql`SELECT room_number, room_type, bed_type, floor FROM rooms ORDER BY room_number ASC;`;
+    const { rows } = await pool.query('SELECT room_number, room_type, bed_type, floor FROM rooms ORDER BY CAST(room_number AS INTEGER) ASC');
 
     const formattedRooms = rows.map(room => ({
       id: room.room_number,
@@ -21,11 +17,9 @@ const handler: NextApiHandler = async (
       floor: room.floor,
     }));
     
-    return response.status(200).json(formattedRooms);
+    return res.status(200).json(formattedRooms);
   } catch (error) {
     console.error('API Get Rooms Error:', error);
-    return response.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Internal Server Error' });
   }
-};
-
-export default handler;
+}

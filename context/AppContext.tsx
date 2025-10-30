@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { Language, Booking, RoomCleaningStatus, CleaningStatus, Room, AppContextType } from '../types';
 import { translations } from '../constants';
@@ -90,7 +89,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setActivePage('home');
   };
   
-  const addBooking = async (bookingData: Omit<Booking, 'id' | 'timestamp'>) => {
+  const addBooking = async (bookingData: Omit<Booking, 'id' | 'timestamp'>): Promise<void> => {
     try {
         const response = await fetch('/api/bookings', {
             method: 'POST',
@@ -108,7 +107,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const updateBooking = async (updatedBooking: Booking) => {
+  const updateBooking = async (updatedBooking: Booking): Promise<void> => {
     try {
         const response = await fetch(`/api/bookings/${updatedBooking.id}`, {
             method: 'PUT',
@@ -126,7 +125,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
   
-  const updateCleaningStatus = async (roomId: string, status: CleaningStatus) => {
+  const updateCleaningStatus = async (roomId: string, status: CleaningStatus): Promise<void> => {
     try {
         const response = await fetch(`/api/cleaning-status/${roomId}`, {
             method: 'PUT',

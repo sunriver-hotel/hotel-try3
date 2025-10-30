@@ -1,50 +1,36 @@
 // api/bookings/[id].ts
-import { sql } from '@vercel/postgres';
-// FIX: Use NextApiHandler to ensure proper typing of the request object.
-import { NextApiHandler } from 'next';
-import { formatDateForDB, formatDateFromDB, mapPaymentStatusToDB, mapPaymentStatusFromDB } from '../utils/db-helpers';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { pool } from '../utils/db';
+import { formatDateForDB, mapPaymentStatusToDB } from '../utils/db-helpers';
 
-const handler: NextApiHandler = async (
-  request,
-  response,
-) => {
-  if (request.method !== 'PUT') {
-    return response.status(405).json({ message: 'Method Not Allowed' });
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'PUT') {
+    return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
+  const client = await pool.connect();
   try {
-    const { id } = request.query; // This is the representative booking_id
-    const updatedBookingData = request.body;
+    await client.query('BEGIN');
     
-    // 1. Get the original booking group details (customer_id, old check-in/out)
-    const originalBookingResult = await sql`
-        SELECT customer_id, check_in_date, check_out_date 
-        FROM bookings WHERE booking_id = ${id as string};
-    `;
+    const { id } = req.query;
+    const updatedBookingData = req.body;
+    
+    const originalBookingResult = await client.query('SELECT customer_id, check_in_date, check_out_date FROM bookings WHERE booking_id = $1', [id]);
     if (originalBookingResult.rows.length === 0) {
-        return response.status(404).json({ message: 'Booking not found' });
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Booking not found' });
     }
     const { customer_id, check_in_date, check_out_date } = originalBookingResult.rows[0];
 
-    // 2. Update customer information
-    await sql`
-        UPDATE customers
-        SET customer_name = ${updatedBookingData.customerName},
-            phone = ${updatedBookingData.phone},
-            email = ${updatedBookingData.email},
-            address = ${updatedBookingData.address},
-            tax_id = ${updatedBookingData.taxId}
-        WHERE customer_id = ${customer_id};
-    `;
+    await client.query(
+        'UPDATE customers SET customer_name = $1, phone = $2, email = $3, address = $4, tax_id = $5 WHERE customer_id = $6',
+        [updatedBookingData.customerName, updatedBookingData.phone, updatedBookingData.email, updatedBookingData.address, updatedBookingData.taxId, customer_id]
+    );
 
-    // 3. Get all original room numbers for this logical booking
-    const originalRoomsResult = await sql`
-        SELECT r.room_number FROM bookings b
-        JOIN rooms r ON b.room_id = r.room_id
-        WHERE b.customer_id = ${customer_id}
-          AND b.check_in_date = ${check_in_date}
-          AND b.check_out_date = ${check_out_date};
-    `;
+    const originalRoomsResult = await client.query(
+        `SELECT r.room_number FROM bookings b JOIN rooms r ON b.room_id = r.room_id WHERE b.customer_id = $1 AND b.check_in_date = $2 AND b.check_out_date = $3`,
+        [customer_id, check_in_date, check_out_date]
+    );
     const originalRoomNumbers: string[] = originalRoomsResult.rows.map(r => r.room_number);
     const newRoomNumbers: string[] = updatedBookingData.roomIds;
 
@@ -55,77 +41,55 @@ const handler: NextApiHandler = async (
     const checkOutDB = formatDateForDB(updatedBookingData.checkOut);
     const paymentStatusDB = mapPaymentStatusToDB(updatedBookingData.paymentStatus);
 
-    // 4. Delete removed rooms from the booking
     if (roomsToDelete.length > 0) {
-        // FIX: The `sql` template from `@vercel/postgres` does not support array parameters for `ANY`.
-        // The array must be converted to a PostgreSQL array literal string, e.g., '{101,102}'.
-        const roomsToDeletePGArray = `{${roomsToDelete.join(',')}}`;
-        await sql`
-            DELETE FROM bookings
-            WHERE customer_id = ${customer_id}
-              AND check_in_date = ${check_in_date}
-              AND check_out_date = ${check_out_date}
-              AND room_id IN (SELECT room_id FROM rooms WHERE room_number = ANY(${roomsToDeletePGArray}));
-        `;
+        await client.query(
+            `DELETE FROM bookings WHERE customer_id = $1 AND check_in_date = $2 AND check_out_date = $3 AND room_id IN (SELECT room_id FROM rooms WHERE room_number = ANY($4::text[]))`,
+            [customer_id, check_in_date, check_out_date, roomsToDelete]
+        );
     }
 
-    // 5. Add new rooms to the booking
     for (const roomNumber of roomsToAdd) {
-        const roomResult = await sql`SELECT room_id FROM rooms WHERE room_number = ${roomNumber};`;
+        const roomResult = await client.query('SELECT room_id FROM rooms WHERE room_number = $1', [roomNumber]);
         const roomId = roomResult.rows[0].room_id;
         
-        const idResult = await sql`SELECT generate_booking_id() as new_id;`;
+        const idResult = await client.query("SELECT generate_booking_id() as new_id;");
         const newBookingId = idResult.rows[0].new_id;
 
-        await sql`
-            INSERT INTO bookings (booking_id, customer_id, room_id, check_in_date, check_out_date, status, price_per_night, deposit)
-            VALUES (${newBookingId}, ${customer_id}, ${roomId}, ${checkInDB}, ${checkOutDB}, ${paymentStatusDB}, ${updatedBookingData.pricePerNight}, ${updatedBookingData.depositAmount || 0});
-        `;
+        await client.query(
+            `INSERT INTO bookings (booking_id, customer_id, room_id, check_in_date, check_out_date, status, price_per_night, deposit)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [newBookingId, customer_id, roomId, checkInDB, checkOutDB, paymentStatusDB, updatedBookingData.pricePerNight, updatedBookingData.depositAmount || 0]
+        );
     }
-
-    // 6. Update the remaining/common booking records
-    // FIX: The `sql` template from `@vercel/postgres` does not support array parameters for `ANY`.
-    // The array must be converted to a PostgreSQL array literal string, e.g., '{101,102}'.
-    const newRoomNumbersPGArray = `{${newRoomNumbers.join(',')}}`;
-    await sql`
-        UPDATE bookings
-        SET check_in_date = ${checkInDB},
-            check_out_date = ${checkOutDB},
-            status = ${paymentStatusDB},
-            price_per_night = ${updatedBookingData.pricePerNight},
-            deposit = ${updatedBookingData.depositAmount || 0}
-        WHERE customer_id = ${customer_id}
-          AND check_in_date = ${check_in_date}
-          AND check_out_date = ${check_out_date}
-          AND room_id IN (SELECT room_id FROM rooms WHERE room_number = ANY(${newRoomNumbersPGArray}));
-    `;
     
-    // Fetch and return the fully updated logical booking object
-    const finalBookingResult = await sql`
-        SELECT
-            MIN(b.booking_id) as booking_id,
-            MIN(b.created_at) as created_at,
-            STRING_AGG(r.room_number, ',') as room_numbers
-        FROM bookings b
-        JOIN rooms r ON b.room_id = r.room_id
-        WHERE b.customer_id = ${customer_id}
-          AND b.check_in_date = ${checkInDB}
-          AND b.check_out_date = ${checkOutDB}
-    `;
+    await client.query(
+        `UPDATE bookings SET check_in_date = $1, check_out_date = $2, status = $3, price_per_night = $4, deposit = $5
+         WHERE customer_id = $6 AND check_in_date = $7 AND check_out_date = $8 AND room_id IN (SELECT room_id FROM rooms WHERE room_number = ANY($9::text[]))`,
+        [checkInDB, checkOutDB, paymentStatusDB, updatedBookingData.pricePerNight, updatedBookingData.depositAmount || 0, customer_id, check_in_date, check_out_date, newRoomNumbers]
+    );
+
+    const finalBookingResult = await client.query(
+        `SELECT MIN(b.booking_id) as booking_id, MIN(b.created_at) as created_at, STRING_AGG(r.room_number, ',' ORDER BY r.room_number) as room_numbers
+         FROM bookings b JOIN rooms r ON b.room_id = r.room_id WHERE b.customer_id = $1 AND b.check_in_date = $2 AND b.check_out_date = $3`,
+        [customer_id, checkInDB, checkOutDB]
+    );
+
+    await client.query('COMMIT');
 
     const finalData = {
         ...updatedBookingData,
         id: finalBookingResult.rows[0].booking_id,
         timestamp: finalBookingResult.rows[0].created_at.toISOString(),
-        roomIds: finalBookingResult.rows[0].room_numbers.split(','),
+        roomIds: finalBookingResult.rows[0].room_numbers.split(',').sort((a: string, b: string) => a.localeCompare(b, undefined, { numeric: true })),
     };
 
-    return response.status(200).json(finalData);
+    return res.status(200).json(finalData);
 
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('API Update Booking Error:', error);
-    return response.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    client.release();
   }
-};
-
-export default handler;
+}
